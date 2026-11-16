@@ -54,6 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dump", action="store_true", help="print the upcoming events and exit (no UI)"
     )
+    parser.add_argument(
+        "--embed",
+        action="store_true",
+        help="experimental: place the widget inside the taskbar window instead of over it",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -63,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from cal_widget.app import run  # imported here so --dump doesn't load Qt
 
-    return run()
+    return run(embed=args.embed)
 
 
 if __name__ == "__main__":

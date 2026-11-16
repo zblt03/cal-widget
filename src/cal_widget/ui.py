@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -20,7 +20,7 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
 )
-from PySide6.QtWidgets import QMenu, QWidget
+from PySide6.QtWidgets import QMenu, QToolTip, QWidget
 
 # Layout, in logical pixels (Qt scales them for 125 %, 150 %, ...).
 PADDING_X = 8  # space inside the hover highlight, left and right
@@ -126,7 +126,10 @@ class CalendarWidget(QWidget):
         event (e.g. when it moves away from under the cursor), so the
         controller calls this periodically.
         """
-        hovered = self.isVisible() and self.rect().contains(self.mapFromGlobal(QCursor.pos()))
+        self.set_hovered(self.isVisible() and self.rect().contains(self.mapFromGlobal(QCursor.pos())))
+
+    def set_hovered(self, hovered: bool) -> None:
+        """Set the hover highlight explicitly."""
         if hovered != self._hovered:
             self._hovered = hovered
             self._pressed = self._pressed and hovered
@@ -142,9 +145,13 @@ class CalendarWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
 
+        # The window can be wider than its content (embedded mode), so the
+        # clickable area is only the part that fits the text.
+        content = QRectF(0, 0, min(self.width(), self.preferred_width()), self.height())
+
         # Fully transparent pixels of a layered window let clicks fall through
         # to the taskbar, so paint an invisible (alpha = 1) background.
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
+        painter.fillRect(content, QColor(0, 0, 0, 1))
 
         text_color = self._text_color()
         if self._hovered:
@@ -152,7 +159,7 @@ class CalendarWidget(QWidget):
             highlight.setAlphaF(0.05 if self._pressed else 0.09)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(highlight)
-            area = QRectF(self.rect()).adjusted(0, HOVER_MARGIN_Y, 0, -HOVER_MARGIN_Y)
+            area = content.adjusted(0, HOVER_MARGIN_Y, 0, -HOVER_MARGIN_Y)
             painter.drawRoundedRect(area, HOVER_RADIUS, HOVER_RADIUS)
 
         if self._dimmed:
@@ -213,4 +220,13 @@ class CalendarWidget(QWidget):
         menu.addAction("Open Google Calendar", self.open_calendar_requested.emit)
         menu.addSeparator()
         menu.addAction("Quit", self.quit_requested.emit)
-        menu.exec(event.globalPos())
+        # QCursor.pos() is always right; event.globalPos() is derived from where
+        # Qt *thinks* the window is, which is wrong when embedded in the taskbar.
+        menu.exec(QCursor.pos())
+
+    def event(self, event: QEvent) -> bool:  # noqa: A003
+        if event.type() == QEvent.Type.ToolTip:
+            if self.toolTip():
+                QToolTip.showText(QCursor.pos(), self.toolTip(), self)
+            return True
+        return super().event(event)

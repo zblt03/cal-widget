@@ -202,6 +202,71 @@ def set_topmost(hwnd: int) -> None:
     user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
 
 
+# --- Experimental: embedding the widget inside the taskbar window -------------
+
+GWL_STYLE = -16
+WS_CHILD = 0x40000000
+WS_POPUP = 0x80000000
+HWND_TOP = wintypes.HWND(0)
+
+user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+user32.FindWindowW.restype = wintypes.HWND
+user32.SetParent.argtypes = [wintypes.HWND, wintypes.HWND]
+user32.SetParent.restype = wintypes.HWND
+user32.GetParent.argtypes = [wintypes.HWND]
+user32.GetParent.restype = wintypes.HWND
+user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+
+
+def find_taskbar_window() -> int | None:
+    """Return the HWND of the primary taskbar (class ``Shell_TrayWnd``)."""
+    return user32.FindWindowW("Shell_TrayWnd", None) or None
+
+
+def embed_in_taskbar(hwnd: int, taskbar_hwnd: int) -> bool:
+    """Make ``hwnd`` a child window of the taskbar. Returns True on success.
+
+    Undocumented territory: Windows 11 has no API for this. A window owned by
+    another process becomes our parent, so Windows links both input queues —
+    if our UI thread ever blocked, the taskbar would freeze too.
+    """
+    style = user32.GetWindowLongPtrW(hwnd, GWL_STYLE)
+    style = (style & ~WS_POPUP) | WS_CHILD
+    user32.SetWindowLongPtrW(hwnd, GWL_STYLE, style)
+    user32.SetParent(hwnd, taskbar_hwnd)
+    ok = user32.GetParent(hwnd) == taskbar_hwnd
+    if not ok:
+        log.warning("SetParent into the taskbar failed (error %d)", ctypes.get_last_error())
+    return ok
+
+
+def is_child_of(hwnd: int, parent: int) -> bool:
+    """True if ``hwnd``'s parent is ``parent``."""
+    return user32.GetParent(hwnd) == parent
+
+
+def place_child(hwnd: int, x: int, y: int, width: int, height: int) -> None:
+    """Move/resize a child window (parent-relative physical pixels) and raise it.
+
+    Raising matters on Windows 11: the taskbar's XAML content is itself a
+    child window and would otherwise be drawn on top of ours.
+    """
+    user32.SetWindowPos(hwnd, HWND_TOP, x, y, width, height, SWP_NOACTIVATE)
+
+
+def cursor_over_window(hwnd: int) -> bool:
+    """True if the mouse cursor is inside the window's screen rectangle."""
+    point = wintypes.POINT()
+    rect = RECT()
+    if not user32.GetCursorPos(ctypes.byref(point)) or not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return False
+    return rect.left <= point.x < rect.right and rect.top <= point.y < rect.bottom
+
+
 def _class_name(hwnd: int) -> str:
     buffer = ctypes.create_unicode_buffer(256)
     user32.GetClassNameW(hwnd, buffer, len(buffer))

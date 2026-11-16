@@ -12,13 +12,13 @@ import threading
 from datetime import datetime
 from enum import Enum, auto
 
-from PySide6.QtCore import QObject, QRect, QTimer, QUrl, Signal
+from PySide6.QtCore import QObject, QRect, QSize, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from cal_widget import auth, calendar_client, taskbar
 from cal_widget.events import Event, format_time_range, select_event
-from cal_widget.ui import CalendarWidget
+from cal_widget.ui import MAX_WIDTH, CalendarWidget
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +55,9 @@ class App(QObject):
     _reauth_needed = Signal()
     _credentials_missing = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, embed: bool = False) -> None:
         super().__init__()
+        self.embed = embed  # experimental: live inside the taskbar window
         self.widget = CalendarWidget()
         self.state = State.LOADING
         self.events: list[Event] = []
@@ -84,7 +85,13 @@ class App(QObject):
     def start(self) -> None:
         """Show the widget, start the timers and load events."""
         self.update_display()
+        if self.embed:
+            info = taskbar.get_taskbar()
+            scale = QGuiApplication.primaryScreen().devicePixelRatio()
+            height = round(info.rect.height / scale) if info else 48
+            self.widget.resize(QSize(MAX_WIDTH, height))
         self.widget.show()
+        self.reposition()  # embedding needs the native window to exist
         self._placement_timer.start()
         self._topmost_timer.start()
         self.refresh()
@@ -188,6 +195,9 @@ class App(QObject):
     def reposition(self) -> None:
         """Move the widget onto the taskbar; cheap enough to call every 2 s."""
         self.widget.set_light_theme(taskbar.uses_light_theme())
+        if self.embed:
+            self._reposition_embedded()
+            return
 
         screen = QGuiApplication.primaryScreen()
         scale = screen.devicePixelRatio()
@@ -216,10 +226,43 @@ class App(QObject):
         if layout[1]:
             log.warning("Taskbar icons are left-aligned; the widget may overlap the Start button")
 
+    def _reposition_embedded(self) -> None:
+        """Experimental: keep the widget as a child of the taskbar window.
+
+        Coordinates here are physical pixels relative to the taskbar. Qt does
+        not know it has a parent, so we resize through Qt (to keep its
+        painting size right) and then position through Win32.
+        """
+        if not self.widget.isVisible():
+            return
+        hwnd = int(self.widget.winId())
+        tray = taskbar.find_taskbar_window()
+        info = taskbar.get_taskbar()
+        if tray is None or info is None:
+            return
+        if not taskbar.is_child_of(hwnd, tray):
+            log.info("Embedding the widget into the taskbar")
+            if not taskbar.embed_in_taskbar(hwnd, tray):
+                return
+
+        # The window keeps a fixed size (set in start()); resizing through Qt
+        # after embedding makes Qt compute wrong positions and stop painting.
+        scale = QGuiApplication.primaryScreen().devicePixelRatio()
+        width_px = round(self.widget.width() * scale)
+        height_px = round(self.widget.height() * scale)
+        y = (info.rect.height - height_px) // 2
+        taskbar.place_child(hwnd, round(8 * scale), y, width_px, height_px)
+
     def _keep_visible(self) -> None:
         """Hide during fullscreen apps; otherwise stay above the taskbar."""
-        self.widget.sync_hover()
         hwnd = int(self.widget.winId())
+        if self.embed:
+            # Inside the taskbar: it hides with it in fullscreen; just keep
+            # the hover state honest and stay above the XAML content.
+            self.widget.set_hovered(taskbar.cursor_over_window(hwnd))
+            self._reposition_embedded()
+            return
+        self.widget.sync_hover()
         if taskbar.is_fullscreen_app_active(hwnd):
             if not self._hidden_for_fullscreen:
                 self._hidden_for_fullscreen = True
@@ -231,10 +274,10 @@ class App(QObject):
         taskbar.set_topmost(hwnd)
 
 
-def run() -> int:
+def run(embed: bool = False) -> int:
     """Create the Qt application, start the widget and run the event loop."""
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)
-    controller = App()
+    controller = App(embed=embed)
     controller.start()
     return qt_app.exec()
