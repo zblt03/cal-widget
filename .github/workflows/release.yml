@@ -35,7 +35,16 @@ jobs:
         run: python -m pytest -q
 
       - name: Build the exe
-        run: python tools/build_exe.py
+        shell: pwsh
+        env:
+          # The shared "Desktop app" OAuth client, stored as a repository secret.
+          CAL_WIDGET_CLIENT_JSON: ${{ secrets.CAL_WIDGET_CLIENT_JSON }}
+        run: |
+          if (-not $env:CAL_WIDGET_CLIENT_JSON) {
+            Write-Error "Repository secret CAL_WIDGET_CLIENT_JSON is missing; users could not sign in"
+            exit 1
+          }
+          python tools/build_exe.py
 
       - name: Publish the release
         shell: pwsh

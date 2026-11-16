@@ -25,8 +25,8 @@ LOGIN_TIMEOUT_SECONDS = 300
 CREDENTIALS_HELP = (
     "credentials.json was not found.\n\n"
     "cal-widget needs a Google OAuth client of type 'Desktop app'. Follow the\n"
-    "'Google Cloud setup' section of the README "
-    "(https://github.com/zblt03/cal-widget#google-cloud-setup),\n"
+    "'Using your own Google client' section of the README "
+    "(https://github.com/zblt03/cal-widget#using-your-own-google-client-optional),\n"
     "then save the downloaded file as credentials.json in one of:\n"
 )
 

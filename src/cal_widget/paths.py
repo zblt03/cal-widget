@@ -52,6 +52,30 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+# File name of the shared OAuth client that release builds carry inside the exe.
+BUNDLED_CLIENT_NAME = "bundled_client.json"
+
+
+def bundled_client_path() -> Path | None:
+    """The OAuth client packed into the exe by tools/build_exe.py, if any.
+
+    PyInstaller unpacks bundled data files to ``sys._MEIPASS`` at start-up.
+    When running from source there is no bundled client.
+    """
+    bundle_dir = getattr(sys, "_MEIPASS", None)
+    if bundle_dir is None:
+        return None
+    return Path(bundle_dir) / BUNDLED_CLIENT_NAME
+
+
 def credentials_candidates() -> list[Path]:
-    """Places where ``credentials.json`` is looked for, in priority order."""
-    return [data_dir() / "credentials.json", app_dir() / "credentials.json"]
+    """OAuth client files to try, in priority order.
+
+    A user's own ``credentials.json`` always wins; the client bundled in the
+    exe is the fallback, so normal users need no Google Cloud setup at all.
+    """
+    candidates = [data_dir() / "credentials.json", app_dir() / "credentials.json"]
+    bundled = bundled_client_path()
+    if bundled is not None:
+        candidates.append(bundled)
+    return candidates

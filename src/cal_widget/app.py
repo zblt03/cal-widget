@@ -27,7 +27,7 @@ from cal_widget.ui import MAX_WIDTH, CalendarWidget
 log = logging.getLogger(__name__)
 
 CALENDAR_URL = "https://calendar.google.com/"
-README_SETUP_URL = "https://github.com/zblt03/cal-widget#google-cloud-setup"
+README_SETUP_URL = "https://github.com/zblt03/cal-widget#using-your-own-google-client-optional"
 PLACEMENT_INTERVAL_MS = 2_000
 TOPMOST_INTERVAL_MS = 1_000
 RETRY_INTERVAL_MS = 30_000  # API retry while the last fetch failed (offline)
