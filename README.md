@@ -20,19 +20,27 @@ style of an iOS lock-screen widget.
 
 1. Download `cal-widget.exe` from the [latest release](https://github.com/zblt03/cal-widget/releases/latest).
    No installation and no Python needed — it is a single file. Put it anywhere, e.g. `C:\Apps\cal-widget\`.
-2. Create your own Google OAuth client (`credentials.json`), as explained in
-   [Google Cloud setup](#google-cloud-setup) below. This takes about 5 minutes and is only done once.
-3. Put `credentials.json` **next to `cal-widget.exe`** (or in `%LOCALAPPDATA%\cal-widget\`).
-4. Run `cal-widget.exe`. Click the widget (**Sign in to Google**) and allow access in your browser.
-5. Right-click the widget → **Start with Windows** so it starts when you sign in.
+2. Run it. Your browser opens: sign in to Google and allow read-only access to your calendar.
+3. Right-click the widget → **Start with Windows** so it starts when you sign in.
 
 > Windows SmartScreen may warn that the app is unrecognised, because the exe is not code-signed.
 > Choose **More info → Run anyway**. You can also build the exe yourself (see below).
 
-## Google Cloud setup
+> While cal-widget is awaiting Google's verification, the sign-in page may say
+> "Google hasn't verified this app": click **Advanced → Go to cal-widget**.
 
-Google requires every app that reads a calendar to have an OAuth client. Because this is an
-open-source app with no server, each user creates their own (free):
+### Privacy
+
+The exe talks to Google directly — there is no cal-widget server. Your sign-in token and events are
+stored only on your PC, in `%LOCALAPPDATA%\cal-widget\`, and access is read-only.
+
+## Using your own Google client (optional)
+
+Release builds include a shared Google OAuth client, so most people can skip this. You need your
+own client when running from source, or if you prefer not to rely on the shared one. A
+`credentials.json` placed next to the exe (or in `%LOCALAPPDATA%\cal-widget\`) always takes priority.
+
+Creating one is free and takes about 5 minutes:
 
 1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a **new project**
    (e.g. "cal-widget").
@@ -43,7 +51,8 @@ open-source app with no server, each user creates their own (free):
    - Contact information: your address. Agree to the policy and **Create**.
 4. In **Audience**, under **Test users**, click **Add users** and add your own Google address.
 5. In **Clients**, click **Create client** → Application type **Desktop app** → **Create**.
-6. Click **Download JSON** and save the file as **`credentials.json`** (see step 3 of [Install](#install)).
+6. Click **Download JSON** and save the file as **`credentials.json`** next to the exe, in
+   `%LOCALAPPDATA%\cal-widget\`, or (from source) in the project folder.
 
 > **Signed out after 7 days?** While the app's publishing status is *Testing*, Google expires the
 > sign-in after a week. To avoid that, go to **Audience → Publish app**. You do not need Google's
@@ -107,9 +116,9 @@ folder. You can also remove access at [myaccount.google.com/permissions](https:/
 
 | Problem | Fix |
 |---|---|
-| Widget says **Setup needed** | `credentials.json` was not found — click the widget to open [Google Cloud setup](#google-cloud-setup) |
-| Widget says **Sign in to Google** | Click it. If it happens every week, publish the app (see the note above) |
-| **Access blocked** / "has not completed the Google verification process" | Add your address as a **Test user** (setup step 4) |
+| Widget says **Setup needed** | Only when running from source: no `credentials.json` — see [Using your own Google client](#using-your-own-google-client-optional) |
+| Widget says **Sign in to Google** | Click it. With your own client, if it happens every week, publish it (see the note above) |
+| **Access blocked** / "has not completed the Google verification process" | With your own client: add your address as a **Test user** (step 4 above) |
 | Widget is dimmed | No connection: it is showing saved events; it recovers automatically |
 | Widget is not visible, or overlaps the Windows Widgets (weather) button | Turn off *Settings → Personalization → Taskbar → Widgets*. As a fallback, run `cal-widget.exe --overlay` to float it over the taskbar |
 | Taskbar icons are aligned to the left | The widget is designed for the default centred layout (*Settings → Personalization → Taskbar → Taskbar behaviours → Alignment: Center*) |
@@ -160,7 +169,10 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-GitHub Actions runs the tests, builds the exe and publishes the release.
+GitHub Actions runs the tests, builds the exe and publishes the release. The release job needs
+the repository secret `CAL_WIDGET_CLIENT_JSON` (the JSON of the shared "Desktop app" OAuth
+client); `tools/build_exe.py` packs it into the exe so users don't need their own. It is never
+committed to the repository.
 
 ## License
 
