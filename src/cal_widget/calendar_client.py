@@ -75,6 +75,12 @@ def parse_event(item: dict[str, Any], calendar: CalendarInfo) -> Event:
     )
 
 
+def is_excluded(calendar: CalendarInfo, excluded: list[str]) -> bool:
+    """True if the calendar's ID or name (ignoring case) is in ``excluded``."""
+    wanted = {item.strip().casefold() for item in excluded}
+    return calendar.id.casefold() in wanted or calendar.name.casefold() in wanted
+
+
 def list_calendars(service: Any) -> list[CalendarInfo]:
     """Return the visible, selected calendars of the user."""
     calendars: list[CalendarInfo] = []
@@ -151,9 +157,12 @@ def load_cache(path: Path) -> list[Event] | None:
         return None
 
 
-def fetch_events(creds: Credentials, now: datetime) -> list[Event]:
+def fetch_events(
+    creds: Credentials, now: datetime, excluded_calendars: list[str] | None = None
+) -> list[Event]:
     """Fetch events from all selected calendars, from ``now`` to the end of tomorrow.
 
+    Calendars named in ``excluded_calendars`` (by name or ID) are skipped.
     Events that appear in several calendars (e.g. an invitation shown in a
     shared calendar too) are kept once. The result is sorted by start time.
     """
@@ -163,6 +172,8 @@ def fetch_events(creds: Credentials, now: datetime) -> list[Event]:
     seen: set[tuple[str, datetime]] = set()
     events: list[Event] = []
     for calendar in list_calendars(service):
+        if is_excluded(calendar, excluded_calendars or []):
+            continue
         for event in _list_events(service, calendar, start, end):
             key = (event.title, event.start)
             if key not in seen:

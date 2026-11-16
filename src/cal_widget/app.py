@@ -20,7 +20,8 @@ from PySide6.QtNetwork import QNetworkInformation
 from PySide6.QtWidgets import QApplication
 
 from cal_widget import auth, calendar_client, paths, taskbar
-from cal_widget.events import Event, format_time_range, select_event
+from cal_widget.config import Config, load_config
+from cal_widget.events import Event, format_time_range, select_event, truncate
 from cal_widget.ui import MAX_WIDTH, CalendarWidget
 
 log = logging.getLogger(__name__)
@@ -29,7 +30,6 @@ CALENDAR_URL = "https://calendar.google.com/"
 README_SETUP_URL = "https://github.com/zblt03/cal-widget#google-cloud-setup"
 PLACEMENT_INTERVAL_MS = 2_000
 TOPMOST_INTERVAL_MS = 1_000
-REFRESH_INTERVAL_MS = 5 * 60_000  # normal API refresh
 RETRY_INTERVAL_MS = 30_000  # API retry while the last fetch failed (offline)
 RESELECT_INTERVAL_MS = 30_000  # re-run select_event, no API call
 # If two 30-second ticks are this far apart, the PC must have been asleep.
@@ -69,6 +69,9 @@ class App(QObject):
         # embed=True: the widget lives *inside* the taskbar window.
         # embed=False: it floats over the taskbar as a topmost window (fallback).
         self.embed = embed
+        self.config = Config()
+        self._config_mtime: float | None = None
+        self._reload_config_if_changed()
         self.widget = self._create_widget()
         self.state = State.LOADING
         self.events: list[Event] = []
@@ -95,7 +98,7 @@ class App(QObject):
         self._placement_timer.timeout.connect(self.reposition)
         self._topmost_timer = QTimer(self, interval=TOPMOST_INTERVAL_MS)
         self._topmost_timer.timeout.connect(self._keep_visible)
-        self._refresh_timer = QTimer(self, interval=REFRESH_INTERVAL_MS)
+        self._refresh_timer = QTimer(self, interval=self._refresh_interval_ms())
         self._refresh_timer.timeout.connect(self.refresh)
         self._reselect_timer = QTimer(self, interval=RESELECT_INTERVAL_MS)
         self._reselect_timer.timeout.connect(self._on_reselect_tick)
@@ -144,6 +147,27 @@ class App(QObject):
         self._keep_visible()  # shows the widget as soon as the taskbar exists
         self.refresh()
 
+    # --- config -------------------------------------------------------------------
+
+    def _reload_config_if_changed(self) -> None:
+        """(Re)load config.json when it was created or edited since last time.
+
+        Checking the modification time means edits apply without a restart,
+        and warnings about bad values are logged once, not every refresh.
+        """
+        path = paths.config_path()
+        try:
+            mtime = path.stat().st_mtime
+        except FileNotFoundError:
+            mtime = None
+        if mtime is not None and mtime == self._config_mtime:
+            return
+        self.config = load_config(path)  # creates the file if it is missing
+        self._config_mtime = path.stat().st_mtime if path.exists() else None
+
+    def _refresh_interval_ms(self) -> int:
+        return self.config.refresh_minutes * 60_000
+
     # --- timing -------------------------------------------------------------------
 
     def _on_reselect_tick(self) -> None:
@@ -184,13 +208,16 @@ class App(QObject):
         if self._busy:
             return
         self._busy = True
-        threading.Thread(target=self._worker, args=(allow_login,), daemon=True).start()
+        self._reload_config_if_changed()
+        excluded = list(self.config.excluded_calendars)  # a copy: the thread must not share state
+        threading.Thread(target=self._worker, args=(allow_login, excluded), daemon=True).start()
 
-    def _worker(self, allow_login: bool) -> None:
+    def _worker(self, allow_login: bool, excluded_calendars: list[str] | None = None) -> None:
         """Runs off the UI thread. Always emits exactly one result signal."""
         try:
             creds = auth.get_credentials(allow_login=allow_login)
-            events = calendar_client.fetch_events(creds, datetime.now().astimezone())
+            now = datetime.now().astimezone()
+            events = calendar_client.fetch_events(creds, now, excluded_calendars)
         except auth.ReauthRequiredError:
             self._reauth_needed.emit()
         except auth.CredentialsMissingError:
@@ -213,7 +240,7 @@ class App(QObject):
             calendar_client.save_cache(events, paths.cache_path())
         except OSError:
             log.exception("Could not write the event cache")
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
+        self._refresh_timer.start(self._refresh_interval_ms())
         self.update_display()
 
     def _on_fetch_failed(self) -> None:
@@ -230,7 +257,7 @@ class App(QObject):
     def _finish_with_state(self, state: State) -> None:
         self._busy = False
         self.state = state
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
+        self._refresh_timer.start(self._refresh_interval_ms())
         self.update_display()
 
     # --- display ------------------------------------------------------------------
@@ -252,14 +279,21 @@ class App(QObject):
             case State.ERROR:
                 self.widget.set_content("Can't load events", "Right-click → Refresh now")
             case State.READY:
-                display = select_event(self.events, now)
+                display = select_event(self.events, now, self.config.show_tomorrow)
                 tooltip = build_tooltip(display.event, now) if display.event else ""
                 if self.stale:
                     tooltip = (tooltip + "\n\n" if tooltip else "") + OFFLINE_NOTE
                 if display.event:
-                    # Time range on top, title underneath.
+                    bar_color = None
+                    if self.config.bar_uses_calendar_color:
+                        bar_color = display.event.calendar_color
+                    # Time range on top, title underneath (the tooltip keeps the full title).
                     self.widget.set_content(
-                        display.time_text, display.title, tooltip, dimmed=self.stale
+                        display.time_text,
+                        truncate(display.title, self.config.max_title_chars),
+                        tooltip,
+                        bar_color=bar_color,
+                        dimmed=self.stale,
                     )
                 else:
                     self.widget.set_content(display.time_text, "", tooltip, dimmed=self.stale)
@@ -272,7 +306,8 @@ class App(QObject):
             case State.MISSING_CREDENTIALS:
                 self._open_url(README_SETUP_URL)
             case _:
-                display = select_event(self.events, datetime.now().astimezone())
+                now = datetime.now().astimezone()
+                display = select_event(self.events, now, self.config.show_tomorrow)
                 link = display.event.html_link if display.event else None
                 self._open_url(link or CALENDAR_URL)
 

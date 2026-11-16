@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 from types import TracebackType
 
 from cal_widget import __version__, auth, calendar_client, paths
+from cal_widget.config import load_config
 from cal_widget.events import Event, select_event
 from cal_widget.single_instance import SingleInstance
 
@@ -84,13 +85,14 @@ def dump() -> int:
         print(exc, file=sys.stderr)
         return 1
 
+    config = load_config(paths.config_path())
     now = datetime.now().astimezone()
-    events = calendar_client.fetch_events(creds, now)
+    events = calendar_client.fetch_events(creds, now, config.excluded_calendars)
     print(f"{len(events)} events from now until the end of tomorrow:\n")
     for event in events:
         print(_format_event(event))
 
-    display = select_event(events, now)
+    display = select_event(events, now, config.show_tomorrow)
     print(f"\nThe widget would show:\n  ▌{display.time_text}\n  ▌{display.title}")
     return 0
 

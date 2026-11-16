@@ -6,7 +6,7 @@ so the tests behave the same on every machine.
 
 from datetime import datetime, timedelta, timezone
 
-from cal_widget.events import NO_EVENTS, Event, select_event
+from cal_widget.events import NO_EVENTS, Event, select_event, truncate
 
 MADRID = timezone(timedelta(hours=1))
 NEW_YORK = timezone(timedelta(hours=-5))
@@ -130,6 +130,20 @@ def test_event_ending_exactly_now_is_over() -> None:
     gym = ev("Gym", at(16, 19, 30), at(16, 20, 30))
     shower = ev("Shower", at(16, 20, 30), at(16, 21))
     assert select_event([gym, shower], at(16, 20, 30)).title == "Shower"
+
+
+# --- truncation --------------------------------------------------------------
+
+
+def test_truncate_keeps_short_text() -> None:
+    assert truncate("Gym", 10) == "Gym"
+    assert truncate("1234567890", 10) == "1234567890"
+
+
+def test_truncate_cuts_with_ellipsis_within_limit() -> None:
+    result = truncate("Computer Science HL", 10)
+    assert result == "Computer…"
+    assert len(result) <= 10
 
 
 # --- midnight and timezones ------------------------------------------------

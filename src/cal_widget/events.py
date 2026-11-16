@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 EN_DASH = "–"
+ELLIPSIS = "…"
 TOMORROW_PREFIX = "Tomorrow · "
 NO_EVENTS = "No events"
 
@@ -73,6 +74,13 @@ def is_relevant(event: Event) -> bool:
         and event.status != "cancelled"
         and event.response_status != "declined"
     )
+
+
+def truncate(text: str, max_chars: int) -> str:
+    """Cut ``text`` to at most ``max_chars`` characters, ending with "…" if cut."""
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + ELLIPSIS
 
 
 def format_time_range(event: Event, now: datetime) -> str:

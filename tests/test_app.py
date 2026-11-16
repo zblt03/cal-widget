@@ -36,7 +36,7 @@ def upcoming_event() -> Event:
 def make_app(monkeypatch: pytest.MonkeyPatch, fetch_result: list[Event] | Exception) -> App:
     """An overlay-mode App whose Google calls return ``fetch_result`` (or raise it)."""
 
-    def fake_fetch(creds: object, now: datetime) -> list[Event]:
+    def fake_fetch(creds: object, now: datetime, excluded: list[str] | None = None) -> list[Event]:
         if isinstance(fetch_result, Exception):
             raise fetch_result
         return fetch_result
@@ -84,11 +84,31 @@ def test_back_online_clears_dimming(qt_app: QApplication, data_dir: Path, monkey
     app.events = [upcoming_event()]
     app._worker(allow_login=False)
     assert app.stale
-    monkeypatch.setattr(app_module.calendar_client, "fetch_events", lambda creds, now: [upcoming_event()])
+    monkeypatch.setattr(
+        app_module.calendar_client, "fetch_events", lambda creds, now, excluded=None: [upcoming_event()]
+    )
     app._worker(allow_login=False)
     assert not app.stale
     assert not app.widget._dimmed
-    assert app._refresh_timer.interval() == app_module.REFRESH_INTERVAL_MS
+    assert app._refresh_timer.interval() == 5 * 60_000  # default refresh_minutes
+
+
+def test_config_settings_reach_the_widget(
+    qt_app: QApplication, data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    paths.config_path().write_text(
+        '{"bar_uses_calendar_color": true, "max_title_chars": 8, "refresh_minutes": 10}',
+        encoding="utf-8",
+    )
+    start = datetime.now().astimezone() + timedelta(minutes=30)
+    event = Event("Computer Science HL", start, start + timedelta(hours=1), calendar_color="#33b679")
+    app = make_app(monkeypatch, [event])
+    app._worker(allow_login=False)
+
+    assert app.widget._detail == "Compute…"
+    assert app.widget._bar_color is not None and app.widget._bar_color.name() == "#33b679"
+    assert app._refresh_timer.interval() == 10 * 60_000
 
 
 def test_long_gap_between_ticks_means_wake_up(qt_app: QApplication, data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:

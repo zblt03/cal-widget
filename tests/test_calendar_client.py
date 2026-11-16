@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from cal_widget.calendar_client import CalendarInfo, fetch_window, parse_event
+from cal_widget.calendar_client import CalendarInfo, fetch_window, is_excluded, parse_event
 
 CAL = CalendarInfo(id="me@example.com", name="Personal", color="#7986cb")
 
@@ -48,6 +48,13 @@ def test_parse_declined_response() -> None:
         ],
     }
     assert parse_event(item, CAL).response_status == "declined"
+
+
+def test_excluded_by_name_ignoring_case_or_by_id() -> None:
+    assert is_excluded(CAL, ["personal"])
+    assert is_excluded(CAL, ["me@example.com"])
+    assert not is_excluded(CAL, ["Work"])
+    assert not is_excluded(CAL, [])
 
 
 def test_fetch_window_ends_at_local_midnight_after_tomorrow() -> None:
