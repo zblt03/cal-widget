@@ -3,7 +3,10 @@
 Your current or next Google Calendar event, on the left side of the Windows 11 taskbar — in the
 style of an iOS lock-screen widget.
 
-![cal-widget in the taskbar](docs/screenshot.png)
+```
+▌19:30–20:30
+▌Gym
+```
 
 - **Lives inside the taskbar**: it is not a floating window, so it doesn't cover anything.
 - Shows the **event happening now**, or else the **next one today**, or else **tomorrow's first**
