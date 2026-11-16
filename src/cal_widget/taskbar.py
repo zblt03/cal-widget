@@ -244,6 +244,24 @@ def embed_in_taskbar(hwnd: int, taskbar_hwnd: int) -> bool:
     return ok
 
 
+GWL_EXSTYLE = -20
+WS_EX_LAYERED = 0x00080000
+LWA_COLORKEY = 0x1
+user32.SetLayeredWindowAttributes.argtypes = [wintypes.HWND, wintypes.COLORREF, wintypes.BYTE, wintypes.DWORD]
+
+
+def set_color_key(hwnd: int, red: int, green: int, blue: int) -> None:
+    """Make every pixel of exactly this colour transparent.
+
+    Unlike per-pixel alpha (UpdateLayeredWindow), a colour key keeps normal
+    WM_PAINT drawing, which still works once the window is inside the taskbar.
+    """
+    ex_style = user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+    user32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED)
+    colorref = red | (green << 8) | (blue << 16)  # COLORREF is 0x00BBGGRR
+    user32.SetLayeredWindowAttributes(hwnd, colorref, 0, LWA_COLORKEY)
+
+
 def is_child_of(hwnd: int, parent: int) -> bool:
     """True if ``hwnd``'s parent is ``parent``."""
     return user32.GetParent(hwnd) == parent
@@ -258,13 +276,23 @@ def place_child(hwnd: int, x: int, y: int, width: int, height: int) -> None:
     user32.SetWindowPos(hwnd, HWND_TOP, x, y, width, height, SWP_NOACTIVATE)
 
 
-def cursor_over_window(hwnd: int) -> bool:
-    """True if the mouse cursor is inside the window's screen rectangle."""
+user32.IsWindow.argtypes = [wintypes.HWND]
+
+
+def window_exists(hwnd: int) -> bool:
+    """False once the window was destroyed (e.g. together with its parent)."""
+    return bool(user32.IsWindow(hwnd))
+
+
+def cursor_in_window(hwnd: int) -> tuple[int, int] | None:
+    """Cursor position relative to the window (physical pixels), or None if outside."""
     point = wintypes.POINT()
     rect = RECT()
     if not user32.GetCursorPos(ctypes.byref(point)) or not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-        return False
-    return rect.left <= point.x < rect.right and rect.top <= point.y < rect.bottom
+        return None
+    if rect.left <= point.x < rect.right and rect.top <= point.y < rect.bottom:
+        return point.x - rect.left, point.y - rect.top
+    return None
 
 
 def _class_name(hwnd: int) -> str:

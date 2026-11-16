@@ -7,6 +7,7 @@ come back through Qt signals, which Qt delivers on the UI thread.
 from __future__ import annotations
 
 import logging
+import math
 import sys
 import threading
 from datetime import datetime
@@ -58,7 +59,7 @@ class App(QObject):
     def __init__(self, embed: bool = False) -> None:
         super().__init__()
         self.embed = embed  # experimental: live inside the taskbar window
-        self.widget = CalendarWidget()
+        self.widget = self._create_widget()
         self.state = State.LOADING
         self.events: list[Event] = []
         self._busy = False  # a fetch or login thread is running
@@ -72,26 +73,46 @@ class App(QObject):
             lambda: self._finish_with_state(State.MISSING_CREDENTIALS)
         )
 
-        self.widget.clicked.connect(self._on_clicked)
-        self.widget.refresh_requested.connect(self.refresh)
-        self.widget.open_calendar_requested.connect(lambda: self._open_url(CALENDAR_URL))
-        self.widget.quit_requested.connect(QApplication.quit)
-
         self._placement_timer = QTimer(self, interval=PLACEMENT_INTERVAL_MS)
         self._placement_timer.timeout.connect(self.reposition)
         self._topmost_timer = QTimer(self, interval=TOPMOST_INTERVAL_MS)
         self._topmost_timer.timeout.connect(self._keep_visible)
 
-    def start(self) -> None:
-        """Show the widget, start the timers and load events."""
-        self.update_display()
+    def _create_widget(self) -> CalendarWidget:
+        """Create the widget window and connect its signals."""
+        widget = CalendarWidget(embedded=self.embed)
+        widget.clicked.connect(self._on_clicked)
+        widget.refresh_requested.connect(self.refresh)
+        widget.open_calendar_requested.connect(lambda: self._open_url(CALENDAR_URL))
+        widget.quit_requested.connect(QApplication.quit)
+        return widget
+
+    def _show_widget(self) -> None:
+        """Size (embedded mode), show and place the widget."""
         if self.embed:
             info = taskbar.get_taskbar()
             scale = QGuiApplication.primaryScreen().devicePixelRatio()
             height = round(info.rect.height / scale) if info else 48
             self.widget.resize(QSize(MAX_WIDTH, height))
+        else:
+            self.update_display()  # place it before it first appears
         self.widget.show()
-        self.reposition()  # embedding needs the native window to exist
+        self.update_display()  # embedding needs the native window to exist
+
+    def _recreate_widget(self) -> None:
+        """Replace a widget whose native window was destroyed.
+
+        When Explorer restarts, the taskbar window is destroyed and Windows
+        destroys our child window with it.
+        """
+        log.warning("Widget window was destroyed (Explorer restart?); recreating it")
+        self.widget.deleteLater()
+        self.widget = self._create_widget()
+        self._show_widget()
+
+    def start(self) -> None:
+        """Show the widget, start the timers and load events."""
+        self._show_widget()
         self._placement_timer.start()
         self._topmost_timer.start()
         self.refresh()
@@ -245,13 +266,16 @@ class App(QObject):
             if not taskbar.embed_in_taskbar(hwnd, tray):
                 return
 
+        key = self.widget.key_color()  # re-applied every tick: follows theme changes
+        taskbar.set_color_key(hwnd, key.red(), key.green(), key.blue())
+
         # The window keeps a fixed size (set in start()); resizing through Qt
         # after embedding makes Qt compute wrong positions and stop painting.
         scale = QGuiApplication.primaryScreen().devicePixelRatio()
         width_px = round(self.widget.width() * scale)
-        height_px = round(self.widget.height() * scale)
-        y = (info.rect.height - height_px) // 2
-        taskbar.place_child(hwnd, round(8 * scale), y, width_px, height_px)
+        border_px = math.ceil(scale)  # the taskbar's 1-logical-px top border line
+        height_px = info.rect.height - border_px
+        taskbar.place_child(hwnd, round(8 * scale), border_px, width_px, height_px)
 
     def _keep_visible(self) -> None:
         """Hide during fullscreen apps; otherwise stay above the taskbar."""
@@ -259,7 +283,13 @@ class App(QObject):
         if self.embed:
             # Inside the taskbar: it hides with it in fullscreen; just keep
             # the hover state honest and stay above the XAML content.
-            self.widget.set_hovered(taskbar.cursor_over_window(hwnd))
+            if not taskbar.window_exists(hwnd):
+                self._recreate_widget()
+                return
+            scale = QGuiApplication.primaryScreen().devicePixelRatio()
+            cursor = taskbar.cursor_in_window(hwnd)
+            content_px = self.widget.preferred_width() * scale
+            self.widget.set_hovered(cursor is not None and cursor[0] < content_px)
             self._reposition_embedded()
             return
         self.widget.sync_hover()

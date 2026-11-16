@@ -38,6 +38,8 @@ TITLE_FONT_PX = 12
 DARK_THEME_TEXT = QColor(255, 255, 255)
 LIGHT_THEME_TEXT = QColor(0, 0, 0, 228)
 DIMMED_OPACITY = 0.55
+DARK_TASKBAR = QColor(0x1C, 0x1C, 0x1C)  # Windows 11 dark taskbar, no transparency
+LIGHT_TASKBAR = QColor(0xEE, 0xEE, 0xEE)
 
 
 def _make_font(pixel_size: int, weight: QFont.Weight) -> QFont:
@@ -58,7 +60,7 @@ class CalendarWidget(QWidget):
     open_calendar_requested = Signal()
     quit_requested = Signal()
 
-    def __init__(self) -> None:
+    def __init__(self, embedded: bool = False) -> None:
         super().__init__(
             None,
             Qt.WindowType.FramelessWindowHint
@@ -67,7 +69,11 @@ class CalendarWidget(QWidget):
             | Qt.WindowType.WindowDoesNotAcceptFocus  # never steal focus
             | Qt.WindowType.NoDropShadowWindowHint,
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # Embedded in the taskbar we paint opaquely on a colour key instead
+        # (see taskbar.set_color_key), because per-pixel alpha stops updating.
+        self._embedded = embedded
+        if not embedded:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         # Tooltips normally only appear for the active window.
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips)
@@ -137,6 +143,11 @@ class CalendarWidget(QWidget):
 
     # --- painting -------------------------------------------------------------
 
+    def key_color(self) -> QColor:
+        """Transparent colour for embedded mode: the taskbar's own colour, so
+        anti-aliased text edges blend into the real background."""
+        return QColor(LIGHT_TASKBAR if self._light_theme else DARK_TASKBAR)
+
     def _text_color(self) -> QColor:
         return QColor(LIGHT_THEME_TEXT if self._light_theme else DARK_THEME_TEXT)
 
@@ -149,9 +160,18 @@ class CalendarWidget(QWidget):
         # clickable area is only the part that fits the text.
         content = QRectF(0, 0, min(self.width(), self.preferred_width()), self.height())
 
-        # Fully transparent pixels of a layered window let clicks fall through
-        # to the taskbar, so paint an invisible (alpha = 1) background.
-        painter.fillRect(content, QColor(0, 0, 0, 1))
+        if self._embedded:
+            # Colour-key pixels become transparent *and click-through*, so the
+            # content area gets a colour one step away from the key: it looks
+            # identical but still receives clicks.
+            key = self.key_color()
+            painter.fillRect(self.rect(), key)
+            step = -1 if key.red() > 127 else 1
+            painter.fillRect(content, QColor(key.red() + step, key.green(), key.blue()))
+        else:
+            # Fully transparent pixels of a layered window let clicks fall through
+            # to the taskbar, so paint an invisible (alpha = 1) background.
+            painter.fillRect(content, QColor(0, 0, 0, 1))
 
         text_color = self._text_color()
         if self._hovered:
