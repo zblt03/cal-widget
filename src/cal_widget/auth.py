@@ -19,6 +19,8 @@ from cal_widget import paths
 log = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+# Give up waiting for the browser if the user abandons the login.
+LOGIN_TIMEOUT_SECONDS = 300
 
 CREDENTIALS_HELP = (
     "credentials.json was not found.\n\n"
@@ -115,6 +117,7 @@ def login() -> Credentials:
         port=0,
         open_browser=True,
         success_message="cal-widget is signed in. You can close this tab.",
+        timeout_seconds=LOGIN_TIMEOUT_SECONDS,
     )
     _save_token(creds)
     log.info("Login completed; token saved")
