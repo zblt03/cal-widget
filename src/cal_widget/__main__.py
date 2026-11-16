@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 from cal_widget import auth, calendar_client
-from cal_widget.events import Event
+from cal_widget.events import Event, select_event
 
 
 def _format_event(event: Event) -> str:
@@ -39,6 +39,9 @@ def dump() -> int:
     print(f"{len(events)} events from now until the end of tomorrow:\n")
     for event in events:
         print(_format_event(event))
+
+    display = select_event(events, now)
+    print(f"\nThe widget would show:\n  ▌{display.time_text}\n  ▌{display.title}")
     return 0
 
 
