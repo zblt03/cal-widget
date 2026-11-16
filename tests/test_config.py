@@ -79,6 +79,12 @@ def test_not_an_object_uses_defaults() -> None:
     assert parse_config([1, 2, 3]) == Config()
 
 
+def test_file_with_utf8_bom_is_read(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text('{"max_title_chars": 12}', encoding="utf-8-sig")  # starts with a BOM
+    assert load_config(path).max_title_chars == 12
+
+
 def test_broken_json_uses_defaults_and_keeps_file(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     path.write_text('{"refresh_minutes": 10,', encoding="utf-8")

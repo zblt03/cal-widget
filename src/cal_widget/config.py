@@ -99,7 +99,9 @@ def load_config(path: Path) -> Config:
         return config
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # "utf-8-sig" also accepts the byte-order mark that some Windows
+        # editors (and PowerShell 5.1) put at the start of UTF-8 files.
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
         log.warning("config: cannot read %s (%s); using defaults", path, exc)
         return Config()
