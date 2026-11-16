@@ -32,8 +32,8 @@ HOVER_MARGIN_Y = 4  # Windows 11 taskbar buttons leave this gap above/below
 HOVER_RADIUS = 4
 
 FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI"]
-TIME_FONT_PX = 13
-TITLE_FONT_PX = 12
+HEADING_FONT_PX = 13  # line 1, bold: the event title
+DETAIL_FONT_PX = 12  # line 2, regular: the time range
 
 DARK_THEME_TEXT = QColor(255, 255, 255)
 LIGHT_THEME_TEXT = QColor(0, 0, 0, 228)
@@ -73,11 +73,11 @@ class CalendarWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self._time_font = _make_font(TIME_FONT_PX, QFont.Weight.Bold)
-        self._title_font = _make_font(TITLE_FONT_PX, QFont.Weight.Normal)
+        self._heading_font = _make_font(HEADING_FONT_PX, QFont.Weight.Bold)
+        self._detail_font = _make_font(DETAIL_FONT_PX, QFont.Weight.Normal)
 
-        self._time_text = ""
-        self._title = ""
+        self._heading = ""
+        self._detail = ""
         self._bar_color: QColor | None = None
         self._dimmed = False
         self._light_theme = False
@@ -88,15 +88,23 @@ class CalendarWidget(QWidget):
 
     def set_content(
         self,
-        time_text: str,
-        title: str,
+        heading: str,
+        detail: str = "",
         tooltip: str = "",
         bar_color: str | None = None,
         dimmed: bool = False,
     ) -> None:
-        """Change what is shown. ``bar_color`` is "#rrggbb" or None for the text colour."""
-        self._time_text = time_text
-        self._title = title
+        """Change what is shown.
+
+        Args:
+            heading: line 1, bold (e.g. the event title).
+            detail: line 2, regular (e.g. the time range); empty for one line.
+            tooltip: hover text.
+            bar_color: "#rrggbb", or None to use the text colour.
+            dimmed: draw faded, e.g. for cached data while offline.
+        """
+        self._heading = heading
+        self._detail = detail
         self._bar_color = QColor(bar_color) if bar_color else None
         self._dimmed = dimmed
         self.setToolTip(tooltip)
@@ -113,8 +121,8 @@ class CalendarWidget(QWidget):
         # Float metrics + ceil: integer metrics round down, which would make
         # the text one pixel too wide for its box and trigger the ellipsis.
         text_width = max(
-            QFontMetricsF(self._time_font).horizontalAdvance(self._time_text),
-            QFontMetricsF(self._title_font).horizontalAdvance(self._title),
+            QFontMetricsF(self._heading_font).horizontalAdvance(self._heading),
+            QFontMetricsF(self._detail_font).horizontalAdvance(self._detail),
         )
         width = PADDING_X + BAR_WIDTH + BAR_GAP + math.ceil(text_width) + 1 + PADDING_X
         return min(MAX_WIDTH, width)
@@ -158,11 +166,11 @@ class CalendarWidget(QWidget):
         if self._dimmed:
             painter.setOpacity(DIMMED_OPACITY)
 
-        time_metrics = QFontMetricsF(self._time_font)
-        title_metrics = QFontMetricsF(self._title_font)
-        block_height = time_metrics.height()
-        if self._title:
-            block_height += LINE_SPACING + title_metrics.height()
+        heading_metrics = QFontMetricsF(self._heading_font)
+        detail_metrics = QFontMetricsF(self._detail_font)
+        block_height = heading_metrics.height()
+        if self._detail:
+            block_height += LINE_SPACING + detail_metrics.height()
         top = (self.height() - block_height) / 2
 
         # Vertical bar on the left, as tall as the text block.
@@ -175,15 +183,15 @@ class CalendarWidget(QWidget):
         text_width = self.width() - text_x - PADDING_X
         painter.setPen(text_color)
 
-        painter.setFont(self._time_font)
-        time_text = time_metrics.elidedText(self._time_text, Qt.TextElideMode.ElideRight, text_width)
-        painter.drawText(QPointF(text_x, round(top + time_metrics.ascent())), time_text)
+        painter.setFont(self._heading_font)
+        heading = heading_metrics.elidedText(self._heading, Qt.TextElideMode.ElideRight, text_width)
+        painter.drawText(QPointF(text_x, round(top + heading_metrics.ascent())), heading)
 
-        if self._title:
-            painter.setFont(self._title_font)
-            title = title_metrics.elidedText(self._title, Qt.TextElideMode.ElideRight, text_width)
-            baseline = top + time_metrics.height() + LINE_SPACING + title_metrics.ascent()
-            painter.drawText(QPointF(text_x, round(baseline)), title)
+        if self._detail:
+            painter.setFont(self._detail_font)
+            detail = detail_metrics.elidedText(self._detail, Qt.TextElideMode.ElideRight, text_width)
+            baseline = top + heading_metrics.height() + LINE_SPACING + detail_metrics.ascent()
+            painter.drawText(QPointF(text_x, round(baseline)), detail)
 
     # --- mouse ------------------------------------------------------------------
 

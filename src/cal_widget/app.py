@@ -165,7 +165,11 @@ class App(QObject):
             case State.READY:
                 display = select_event(self.events, now)
                 tooltip = build_tooltip(display.event, now) if display.event else ""
-                self.widget.set_content(display.time_text, display.title, tooltip)
+                if display.event:
+                    # Title on top in bold, time range underneath.
+                    self.widget.set_content(display.title, display.time_text, tooltip)
+                else:
+                    self.widget.set_content(display.time_text)  # "No events"
         self.reposition()
 
     def _on_clicked(self) -> None:

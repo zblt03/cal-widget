@@ -26,6 +26,9 @@ clear module boundaries, type hints, docstrings, no clever tricks.
 - `src/cal_widget/` — `__main__` (CLI/wiring), `paths`, `config`, `auth`, `calendar_client`, `events` (pure logic, no I/O), `taskbar` (Win32 via ctypes), `ui` (PySide6 view only: draws, emits signals), `app` (controller: state, background fetch thread, timers).
 - `tests/` — pytest; `events.select_event` must stay pure and fully tested.
 
+## Widget look
+- Line 1: event title, bold. Line 2: time range, regular (user swapped the brief's original order).
+
 ## Display rules (select_event)
 - Ignore all-day, cancelled, and declined events.
 - Ongoing → most recently started; else next today; else tomorrow's first as `Tomorrow · HH:MM–HH:MM`; else "No events".
