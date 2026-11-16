@@ -5,15 +5,17 @@ Network and API errors are not caught here; callers decide how to react.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from cal_widget.events import Event
+from cal_widget.events import Event, event_from_dict, event_to_dict
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +120,35 @@ def _list_events(
         page_token = response.get("nextPageToken")
         if not page_token:
             return events
+
+
+CACHE_VERSION = 1
+
+
+def save_cache(events: list[Event], path: Path) -> None:
+    """Store the last successful fetch so the widget has something to show offline.
+
+    Written to a temporary file first and then renamed, so a crash mid-write
+    never leaves a half-written cache behind.
+    """
+    data = {"version": CACHE_VERSION, "events": [event_to_dict(e) for e in events]}
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+
+def load_cache(path: Path) -> list[Event] | None:
+    """Return the cached events, or None if there is no usable cache."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("version") != CACHE_VERSION:
+            return None
+        return [event_from_dict(item) for item in data["events"]]
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        log.warning("Ignoring unreadable event cache at %s", path)
+        return None
 
 
 def fetch_events(creds: Credentials, now: datetime) -> list[Event]:

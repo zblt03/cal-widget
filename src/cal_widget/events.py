@@ -6,8 +6,9 @@ makes ``select_event`` easy to test.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 EN_DASH = "–"
 TOMORROW_PREFIX = "Tomorrow · "
@@ -32,6 +33,22 @@ class Event:
     calendar_name: str = ""
     calendar_color: str | None = None  # "#rrggbb"
     html_link: str | None = None
+
+
+def event_to_dict(event: Event) -> dict[str, Any]:
+    """Convert an event to JSON-friendly values (datetimes as ISO 8601 strings)."""
+    data = asdict(event)
+    data["start"] = event.start.isoformat()
+    data["end"] = event.end.isoformat()
+    return data
+
+
+def event_from_dict(data: dict[str, Any]) -> Event:
+    """Inverse of :func:`event_to_dict`. Raises KeyError/ValueError/TypeError on bad data."""
+    values = dict(data)
+    values["start"] = datetime.fromisoformat(values["start"])
+    values["end"] = datetime.fromisoformat(values["end"])
+    return Event(**values)
 
 
 @dataclass(frozen=True)
