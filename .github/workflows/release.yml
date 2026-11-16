@@ -1,0 +1,44 @@
+# When a version tag (e.g. v0.1.0) is pushed: test, build the exe and publish a GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write  # needed to create the release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Check the tag matches the package version
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import cal_widget; print(cal_widget.__version__)"
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            Write-Error "Tag ${{ github.ref_name }} does not match __version__ $version"
+            exit 1
+          }
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build the exe
+        run: python tools/build_exe.py
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/cal-widget.exe --title "${{ github.ref_name }}" --generate-notes
