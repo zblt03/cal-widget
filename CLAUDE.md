@@ -27,8 +27,8 @@ clear module boundaries, type hints, docstrings, no clever tricks.
 - `tests/` — pytest; `events.select_event` must stay pure and fully tested.
 
 ## Widget look
-- Line 1: time range (13 px). Line 2: event title (12 px). Both regular weight — no bold (user's choice,
-  overrides the brief's "bold time").
+- Line 1: time range (13 px). Line 2: event title (12 px). Both at variable weight 550 (between Regular
+  and Semibold, set via the "wght" axis) — the user's choice, overrides the brief's "bold time".
 - Default mode: embedded *inside* the taskbar (SetParent into `Shell_TrayWnd`), painted opaquely on a
   colour key because Qt's per-pixel alpha stops repainting there. Never resize/move it through Qt once
   embedded; place it with Win32. `--overlay` (and automatic fallback) = topmost window over the taskbar.

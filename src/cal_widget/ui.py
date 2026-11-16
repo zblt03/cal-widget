@@ -31,9 +31,12 @@ MAX_WIDTH = 280
 HOVER_MARGIN_Y = 4  # Windows 11 taskbar buttons leave this gap above/below
 HOVER_RADIUS = 4
 
-FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI"]
+# Segoe UI Variable is a *variable* font: any weight between 300 and 700 can
+# be requested through its "wght" axis, not just Regular (400) / Semibold (600).
+FONT_FAMILIES = ["Segoe UI Variable", "Segoe UI"]
 HEADING_FONT_PX = 13  # line 1: the time range
 DETAIL_FONT_PX = 12  # line 2: the event title
+FONT_WEIGHT = 550  # a little heavier than Regular, lighter than Semibold
 
 DARK_THEME_TEXT = QColor(255, 255, 255)
 LIGHT_THEME_TEXT = QColor(0, 0, 0, 228)
@@ -42,12 +45,18 @@ DARK_TASKBAR = QColor(0x1C, 0x1C, 0x1C)  # Windows 11 dark taskbar, no transpare
 LIGHT_TASKBAR = QColor(0xEE, 0xEE, 0xEE)
 
 
-def _make_font(pixel_size: int, weight: QFont.Weight) -> QFont:
-    """Create a Segoe UI Variable font, falling back to Segoe UI."""
+def _make_font(pixel_size: int, weight: int) -> QFont:
+    """Create a Segoe UI Variable font at an exact weight, falling back to Segoe UI.
+
+    Variable-font axes: "wght" is the weight; "opsz" (optical size, in
+    points) picks the letter shapes designed for this size, which is what
+    Windows itself does for small UI text.
+    """
     font = QFont()
     font.setFamilies(FONT_FAMILIES)
     font.setPixelSize(pixel_size)
-    font.setWeight(weight)
+    font.setVariableAxis(QFont.Tag("wght"), weight)
+    font.setVariableAxis(QFont.Tag("opsz"), pixel_size * 0.75)  # 96 px = 72 pt
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     return font
 
@@ -79,8 +88,8 @@ class CalendarWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self._heading_font = _make_font(HEADING_FONT_PX, QFont.Weight.Normal)
-        self._detail_font = _make_font(DETAIL_FONT_PX, QFont.Weight.Normal)
+        self._heading_font = _make_font(HEADING_FONT_PX, FONT_WEIGHT)
+        self._detail_font = _make_font(DETAIL_FONT_PX, FONT_WEIGHT)
 
         self._heading = ""
         self._detail = ""
