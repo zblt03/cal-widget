@@ -23,7 +23,7 @@ clear module boundaries, type hints, docstrings, no clever tricks.
 - Runtime files (token.json, events.cache.json, config.json, log) live in `%LOCALAPPDATA%\cal-widget\`, never in the repo.
 
 ## Layout
-- `src/cal_widget/` — `__main__` (CLI/wiring), `paths`, `config`, `auth`, `calendar_client`, `events` (pure logic, no I/O), `taskbar` (Win32 via ctypes), `ui` (PySide6).
+- `src/cal_widget/` — `__main__` (CLI/wiring), `paths`, `config`, `auth`, `calendar_client`, `events` (pure logic, no I/O), `taskbar` (Win32 via ctypes), `ui` (PySide6 view only: draws, emits signals), `app` (controller: state, background fetch thread, timers).
 - `tests/` — pytest; `events.select_event` must stay pure and fully tested.
 
 ## Display rules (select_event)
