@@ -68,6 +68,7 @@ class CalendarWidget(QWidget):
     refresh_requested = Signal()
     open_calendar_requested = Signal()
     quit_requested = Signal()
+    start_with_windows_toggled = Signal(bool)
 
     def __init__(self, embedded: bool = False) -> None:
         super().__init__(
@@ -95,6 +96,8 @@ class CalendarWidget(QWidget):
         self._detail = ""
         self._bar_color: QColor | None = None
         self._dimmed = False
+        # Whether the "Start with Windows" menu item is ticked; the app keeps it in sync.
+        self.start_with_windows = False
         self._light_theme = False
         self._hovered = False
         self._pressed = False
@@ -255,6 +258,11 @@ class CalendarWidget(QWidget):
         menu = QMenu(self)
         menu.addAction("Refresh now", self.refresh_requested.emit)
         menu.addAction("Open Google Calendar", self.open_calendar_requested.emit)
+        menu.addSeparator()
+        autostart = menu.addAction("Start with Windows")
+        autostart.setCheckable(True)
+        autostart.setChecked(self.start_with_windows)
+        autostart.toggled.connect(self.start_with_windows_toggled.emit)
         menu.addSeparator()
         menu.addAction("Quit", self.quit_requested.emit)
         # QCursor.pos() is always right; event.globalPos() is derived from where

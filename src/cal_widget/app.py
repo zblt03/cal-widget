@@ -19,7 +19,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtNetwork import QNetworkInformation
 from PySide6.QtWidgets import QApplication
 
-from cal_widget import auth, calendar_client, paths, taskbar
+from cal_widget import auth, calendar_client, paths, startup, taskbar
 from cal_widget.config import Config, load_config
 from cal_widget.events import Event, format_time_range, select_event, truncate
 from cal_widget.ui import MAX_WIDTH, CalendarWidget
@@ -112,7 +112,17 @@ class App(QObject):
         widget.refresh_requested.connect(self.refresh)
         widget.open_calendar_requested.connect(lambda: self._open_url(CALENDAR_URL))
         widget.quit_requested.connect(QApplication.quit)
+        widget.start_with_windows_toggled.connect(self._set_start_with_windows)
+        widget.start_with_windows = startup.is_enabled()
         return widget
+
+    def _set_start_with_windows(self, enabled: bool) -> None:
+        """Menu handler: add or remove the sign-in entry, then show the real result."""
+        try:
+            startup.set_enabled(enabled)
+        except OSError:
+            log.exception("Could not change the start-with-Windows setting")
+        self.widget.start_with_windows = startup.is_enabled()
 
     def _show_widget(self) -> None:
         """Size (embedded mode), show and place the widget."""
