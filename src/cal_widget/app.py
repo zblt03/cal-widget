@@ -10,14 +10,16 @@ import logging
 import math
 import sys
 import threading
+import time
 from datetime import datetime
 from enum import Enum, auto
 
 from PySide6.QtCore import QObject, QRect, QSize, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtNetwork import QNetworkInformation
 from PySide6.QtWidgets import QApplication
 
-from cal_widget import auth, calendar_client, taskbar
+from cal_widget import auth, calendar_client, paths, taskbar
 from cal_widget.events import Event, format_time_range, select_event
 from cal_widget.ui import MAX_WIDTH, CalendarWidget
 
@@ -27,6 +29,12 @@ CALENDAR_URL = "https://calendar.google.com/"
 README_SETUP_URL = "https://github.com/zblt03/cal-widget#google-cloud-setup"
 PLACEMENT_INTERVAL_MS = 2_000
 TOPMOST_INTERVAL_MS = 1_000
+REFRESH_INTERVAL_MS = 5 * 60_000  # normal API refresh
+RETRY_INTERVAL_MS = 30_000  # API retry while the last fetch failed (offline)
+RESELECT_INTERVAL_MS = 30_000  # re-run select_event, no API call
+# If two 30-second ticks are this far apart, the PC must have been asleep.
+SLEEP_GAP_SECONDS = 90
+OFFLINE_NOTE = "Offline — showing saved events"
 
 
 class State(Enum):
@@ -64,7 +72,15 @@ class App(QObject):
         self.widget = self._create_widget()
         self.state = State.LOADING
         self.events: list[Event] = []
+        self.stale = False  # True while showing old events because fetching fails
         self._busy = False  # a fetch or login thread is running
+        self._last_tick = time.time()
+
+        cached = calendar_client.load_cache(paths.cache_path())
+        if cached is not None:
+            # Show the last known events straight away instead of "Loading…".
+            self.events = cached
+            self.state = State.READY
         self._hidden_for_fullscreen = False
         self._warned_layout: tuple[taskbar.Edge, bool] | None = None
 
@@ -79,6 +95,12 @@ class App(QObject):
         self._placement_timer.timeout.connect(self.reposition)
         self._topmost_timer = QTimer(self, interval=TOPMOST_INTERVAL_MS)
         self._topmost_timer.timeout.connect(self._keep_visible)
+        self._refresh_timer = QTimer(self, interval=REFRESH_INTERVAL_MS)
+        self._refresh_timer.timeout.connect(self.refresh)
+        self._reselect_timer = QTimer(self, interval=RESELECT_INTERVAL_MS)
+        self._reselect_timer.timeout.connect(self._on_reselect_tick)
+
+        self._watch_network()
 
     def _create_widget(self) -> CalendarWidget:
         """Create the widget window and connect its signals."""
@@ -118,8 +140,33 @@ class App(QObject):
         """Show the widget, start the timers and load events."""
         self._placement_timer.start()
         self._topmost_timer.start()
+        self._reselect_timer.start()
         self._keep_visible()  # shows the widget as soon as the taskbar exists
         self.refresh()
+
+    # --- timing -------------------------------------------------------------------
+
+    def _on_reselect_tick(self) -> None:
+        """Every 30 s: switch to the right event on time, and notice waking from sleep."""
+        now = time.time()
+        if now - self._last_tick > SLEEP_GAP_SECONDS:
+            log.info("PC woke up (no tick for %.0f s); refreshing", now - self._last_tick)
+            self.refresh()
+        self._last_tick = now
+        self.update_display()
+
+    def _watch_network(self) -> None:
+        """Refresh as soon as Windows reports the network is back."""
+        if not QNetworkInformation.loadDefaultBackend():
+            log.info("No network-status backend; relying on the retry timer")
+            return
+        info = QNetworkInformation.instance()
+        info.reachabilityChanged.connect(self._on_reachability_changed)
+
+    def _on_reachability_changed(self, reachability: QNetworkInformation.Reachability) -> None:
+        if reachability == QNetworkInformation.Reachability.Online:
+            log.info("Network is back; refreshing")
+            self.refresh()
 
     # --- fetching (background thread) -------------------------------------------
 
@@ -161,19 +208,29 @@ class App(QObject):
         self._busy = False
         self.events = events
         self.state = State.READY
+        self.stale = False
+        try:
+            calendar_client.save_cache(events, paths.cache_path())
+        except OSError:
+            log.exception("Could not write the event cache")
+        self._refresh_timer.start(REFRESH_INTERVAL_MS)
         self.update_display()
 
     def _on_fetch_failed(self) -> None:
         self._busy = False
         if self.state is State.SIGNING_IN:
             self.state = State.SIGN_IN
-        elif not self.events:
+        elif self.events:
+            self.stale = True  # keep showing what we have, dimmed
+        else:
             self.state = State.ERROR
+        self._refresh_timer.start(RETRY_INTERVAL_MS)
         self.update_display()
 
     def _finish_with_state(self, state: State) -> None:
         self._busy = False
         self.state = state
+        self._refresh_timer.start(REFRESH_INTERVAL_MS)
         self.update_display()
 
     # --- display ------------------------------------------------------------------
@@ -197,11 +254,15 @@ class App(QObject):
             case State.READY:
                 display = select_event(self.events, now)
                 tooltip = build_tooltip(display.event, now) if display.event else ""
+                if self.stale:
+                    tooltip = (tooltip + "\n\n" if tooltip else "") + OFFLINE_NOTE
                 if display.event:
                     # Title on top in bold, time range underneath.
-                    self.widget.set_content(display.title, display.time_text, tooltip)
+                    self.widget.set_content(
+                        display.title, display.time_text, tooltip, dimmed=self.stale
+                    )
                 else:
-                    self.widget.set_content(display.time_text)  # "No events"
+                    self.widget.set_content(display.time_text, "", tooltip, dimmed=self.stale)
         self.reposition()
 
     def _on_clicked(self) -> None:
