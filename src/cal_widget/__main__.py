@@ -60,8 +60,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dump:
         return dump()
-    print("The widget UI arrives in Phase 4. Use --dump for now.", file=sys.stderr)
-    return 0
+
+    from cal_widget.app import run  # imported here so --dump doesn't load Qt
+
+    return run()
 
 
 if __name__ == "__main__":
