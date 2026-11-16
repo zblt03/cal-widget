@@ -28,6 +28,9 @@ clear module boundaries, type hints, docstrings, no clever tricks.
 
 ## Widget look
 - Line 1: event title, bold. Line 2: time range, regular (user swapped the brief's original order).
+- Default mode: embedded *inside* the taskbar (SetParent into `Shell_TrayWnd`), painted opaquely on a
+  colour key because Qt's per-pixel alpha stops repainting there. Never resize/move it through Qt once
+  embedded; place it with Win32. `--overlay` (and automatic fallback) = topmost window over the taskbar.
 
 ## Display rules (select_event)
 - Ignore all-day, cancelled, and declined events.

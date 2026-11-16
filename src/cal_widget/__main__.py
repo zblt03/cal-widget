@@ -55,9 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         "--dump", action="store_true", help="print the upcoming events and exit (no UI)"
     )
     parser.add_argument(
-        "--embed",
+        "--overlay",
         action="store_true",
-        help="experimental: place the widget inside the taskbar window instead of over it",
+        help="float over the taskbar instead of living inside it",
     )
     args = parser.parse_args(argv)
 
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from cal_widget.app import run  # imported here so --dump doesn't load Qt
 
-    return run(embed=args.embed)
+    return run(embed=not args.overlay)
 
 
 if __name__ == "__main__":

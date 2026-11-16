@@ -56,9 +56,11 @@ class App(QObject):
     _reauth_needed = Signal()
     _credentials_missing = Signal()
 
-    def __init__(self, embed: bool = False) -> None:
+    def __init__(self, embed: bool = True) -> None:
         super().__init__()
-        self.embed = embed  # experimental: live inside the taskbar window
+        # embed=True: the widget lives *inside* the taskbar window.
+        # embed=False: it floats over the taskbar as a topmost window (fallback).
+        self.embed = embed
         self.widget = self._create_widget()
         self.state = State.LOADING
         self.events: list[Event] = []
@@ -99,22 +101,24 @@ class App(QObject):
         self.widget.show()
         self.update_display()  # embedding needs the native window to exist
 
-    def _recreate_widget(self) -> None:
-        """Replace a widget whose native window was destroyed.
-
-        When Explorer restarts, the taskbar window is destroyed and Windows
-        destroys our child window with it.
-        """
-        log.warning("Widget window was destroyed (Explorer restart?); recreating it")
+    def _replace_widget(self) -> None:
+        """Throw the widget window away and create a fresh (hidden) one."""
+        self.widget.hide()
         self.widget.deleteLater()
         self.widget = self._create_widget()
+
+    def _fall_back_to_overlay(self) -> None:
+        """Embedding failed: float over the taskbar instead."""
+        log.warning("Could not embed into the taskbar; using overlay mode")
+        self.embed = False
+        self._replace_widget()
         self._show_widget()
 
     def start(self) -> None:
         """Show the widget, start the timers and load events."""
-        self._show_widget()
         self._placement_timer.start()
         self._topmost_timer.start()
+        self._keep_visible()  # shows the widget as soon as the taskbar exists
         self.refresh()
 
     # --- fetching (background thread) -------------------------------------------
@@ -252,11 +256,11 @@ class App(QObject):
             log.warning("Taskbar icons are left-aligned; the widget may overlap the Start button")
 
     def _reposition_embedded(self) -> None:
-        """Experimental: keep the widget as a child of the taskbar window.
+        """Keep the widget as a child of the taskbar window.
 
         Coordinates here are physical pixels relative to the taskbar. Qt does
-        not know it has a parent, so we resize through Qt (to keep its
-        painting size right) and then position through Win32.
+        not know it has a parent, so the window keeps the fixed size it got
+        before embedding and is positioned through Win32 only.
         """
         if not self.widget.isVisible():
             return
@@ -268,6 +272,7 @@ class App(QObject):
         if not taskbar.is_child_of(hwnd, tray):
             log.info("Embedding the widget into the taskbar")
             if not taskbar.embed_in_taskbar(hwnd, tray):
+                self._fall_back_to_overlay()
                 return
 
         key = self.widget.key_color()  # re-applied every tick: follows theme changes
@@ -282,20 +287,36 @@ class App(QObject):
         taskbar.place_child(hwnd, round(8 * scale), border_px, width_px, height_px)
 
     def _keep_visible(self) -> None:
-        """Hide during fullscreen apps; otherwise stay above the taskbar."""
-        hwnd = int(self.widget.winId())
+        """Runs every second: keep the widget shown, placed and on top."""
         if self.embed:
-            # Inside the taskbar: it hides with it in fullscreen; just keep
-            # the hover state honest and stay above the XAML content.
-            if not taskbar.window_exists(hwnd):
-                self._recreate_widget()
-                return
-            scale = QGuiApplication.primaryScreen().devicePixelRatio()
-            cursor = taskbar.cursor_in_window(hwnd)
-            content_px = self.widget.preferred_width() * scale
-            self.widget.set_hovered(cursor is not None and cursor[0] < content_px)
-            self._reposition_embedded()
-            return
+            self._keep_visible_embedded()
+        else:
+            self._keep_visible_overlay()
+
+    def _keep_visible_embedded(self) -> None:
+        """Inside the taskbar the widget hides with it in fullscreen, so this
+        only survives Explorer restarts and keeps the hover state honest."""
+        if not taskbar.window_exists(int(self.widget.winId())):
+            # Explorer restarted: Windows destroyed the taskbar *and* our child window.
+            log.warning("Widget window was destroyed (Explorer restart?); recreating it")
+            self._replace_widget()
+        if not self.widget.isVisible():
+            if taskbar.find_taskbar_window() is None:
+                return  # Explorer not running yet; try again next tick
+            self._show_widget()
+
+        hwnd = int(self.widget.winId())
+        scale = QGuiApplication.primaryScreen().devicePixelRatio()
+        cursor = taskbar.cursor_in_window(hwnd)
+        content_px = self.widget.preferred_width() * scale
+        self.widget.set_hovered(cursor is not None and cursor[0] < content_px)
+        self._reposition_embedded()
+
+    def _keep_visible_overlay(self) -> None:
+        """Hide during fullscreen apps; otherwise stay above the taskbar."""
+        if not self.widget.isVisible() and not self._hidden_for_fullscreen:
+            self._show_widget()  # first tick after start
+        hwnd = int(self.widget.winId())
         self.widget.sync_hover()
         if taskbar.is_fullscreen_app_active(hwnd):
             if not self._hidden_for_fullscreen:
@@ -308,7 +329,7 @@ class App(QObject):
         taskbar.set_topmost(hwnd)
 
 
-def run(embed: bool = False) -> int:
+def run(embed: bool = True) -> int:
     """Create the Qt application, start the widget and run the event loop."""
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)

@@ -202,7 +202,7 @@ def set_topmost(hwnd: int) -> None:
     user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags)
 
 
-# --- Experimental: embedding the widget inside the taskbar window -------------
+# --- Embedding the widget inside the taskbar window ---------------------------
 
 GWL_STYLE = -16
 WS_CHILD = 0x40000000
