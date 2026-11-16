@@ -32,8 +32,8 @@ HOVER_MARGIN_Y = 4  # Windows 11 taskbar buttons leave this gap above/below
 HOVER_RADIUS = 4
 
 FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI"]
-HEADING_FONT_PX = 13  # line 1, bold: the event title
-DETAIL_FONT_PX = 12  # line 2, regular: the time range
+HEADING_FONT_PX = 13  # line 1: the time range
+DETAIL_FONT_PX = 12  # line 2: the event title
 
 DARK_THEME_TEXT = QColor(255, 255, 255)
 LIGHT_THEME_TEXT = QColor(0, 0, 0, 228)
@@ -79,7 +79,7 @@ class CalendarWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self._heading_font = _make_font(HEADING_FONT_PX, QFont.Weight.Bold)
+        self._heading_font = _make_font(HEADING_FONT_PX, QFont.Weight.Normal)
         self._detail_font = _make_font(DETAIL_FONT_PX, QFont.Weight.Normal)
 
         self._heading = ""
@@ -103,8 +103,8 @@ class CalendarWidget(QWidget):
         """Change what is shown.
 
         Args:
-            heading: line 1, bold (e.g. the event title).
-            detail: line 2, regular (e.g. the time range); empty for one line.
+            heading: line 1 (e.g. the time range).
+            detail: line 2 (e.g. the event title); empty for one line.
             tooltip: hover text.
             bar_color: "#rrggbb", or None to use the text colour.
             dimmed: draw faded, e.g. for cached data while offline.

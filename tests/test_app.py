@@ -51,7 +51,7 @@ def test_cache_is_shown_at_startup(qt_app: QApplication, data_dir: Path, monkeyp
     app = make_app(monkeypatch, [])
     assert app.state is State.READY
     app.update_display()  # what start() does before the first fetch returns
-    assert app.widget._heading == "Gym"
+    assert app.widget._detail == "Gym"
 
 
 def test_success_writes_cache(qt_app: QApplication, data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:

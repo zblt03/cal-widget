@@ -257,9 +257,9 @@ class App(QObject):
                 if self.stale:
                     tooltip = (tooltip + "\n\n" if tooltip else "") + OFFLINE_NOTE
                 if display.event:
-                    # Title on top in bold, time range underneath.
+                    # Time range on top, title underneath.
                     self.widget.set_content(
-                        display.title, display.time_text, tooltip, dimmed=self.stale
+                        display.time_text, display.title, tooltip, dimmed=self.stale
                     )
                 else:
                     self.widget.set_content(display.time_text, "", tooltip, dimmed=self.stale)

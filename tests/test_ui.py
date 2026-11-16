@@ -23,9 +23,9 @@ def qt_app() -> QApplication:
 
 def test_width_grows_with_text_and_is_capped(qt_app: QApplication) -> None:
     widget = CalendarWidget()
-    widget.set_content("Gym", "19:30–20:30")
+    widget.set_content("19:30–20:30", "Gym")
     short = widget.preferred_width()
-    widget.set_content("A very long event title " * 10, "19:30–20:30")
+    widget.set_content("19:30–20:30", "A very long event title " * 10)
     assert short < widget.preferred_width() == MAX_WIDTH
 
 
